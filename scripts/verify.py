@@ -32,7 +32,10 @@ def check(name: str, status: str, detail: str = "") -> None:
 
 
 def _sha(path: pathlib.Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    # Git may check JSONL out with CRLF on Windows while checksums.json records
+    # the LF version. A line-ending change does not change any evaluation item;
+    # normalize it so the integrity gate still catches content edits.
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:16]
 
 
 def _load_json(path: pathlib.Path):
@@ -247,6 +250,15 @@ def full() -> None:
 
 
 def main() -> int:
+    # The report-facing checks include Vietnamese text.  Windows terminals still
+    # commonly default to cp1252, which otherwise makes the gatekeeper crash
+    # before it can report the actionable failures.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        # Keep compatibility with wrapped or non-standard stdout streams.
+        pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true", help="imports + data + tests only")
     args = ap.parse_args()
